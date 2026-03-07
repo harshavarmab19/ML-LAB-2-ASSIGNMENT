@@ -13,9 +13,9 @@ from sklearn.metrics import davies_bouldin_score
 
 
 # load dataset
-def load_data(path):
+def load_data("C:\Users\harsh\Downloads\P_DIQ_converted (1).csv"):
 
-    data = pd.read_csv(path)
+    data = pd.read_csv("C:\Users\harsh\Downloads\P_DIQ_converted (1).csv")
 
     # remove ID column if present
     if "SEQN" in data.columns:
@@ -218,4 +218,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
