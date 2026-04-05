@@ -1,9 +1,7 @@
-# Simple ML Comparison - Beginner Version
-
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, StratifiedKFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
 
 from sklearn.linear_model import Perceptron
@@ -17,41 +15,57 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
 
 
-# -------------------------------
-# 1. Load Dataset
-# -------------------------------
 data = pd.read_csv("P_DIQ_converted (1).csv")
 
 print("Shape:", data.shape)
 
-# assuming last column is target
 X = data.iloc[:, :-1]
 y = data.iloc[:, -1]
 
 print("Classes:", y.unique())
 
 
-# -------------------------------
-# 2. Split Data
-# -------------------------------
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# scaling
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
 
 
-# -------------------------------
-# 3. Models
-# -------------------------------
-model_list = [
-    ("Perceptron", Perceptron(max_iter=1000)),
-    ("SVM", SVC()),
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+
+p_model = RandomizedSearchCV(
+    Perceptron(),
+    {"alpha": [0.0001, 0.001, 0.01], "max_iter": [500, 1000]},
+    n_iter=5, cv=cv
+)
+p_model.fit(X_train, y_train)
+
+
+rf_model = RandomizedSearchCV(
+    RandomForestClassifier(),
+    {"n_estimators": [50, 100, 150], "max_depth": [None, 5, 10]},
+    n_iter=5, cv=cv
+)
+rf_model.fit(X_train, y_train)
+
+
+svm_model = RandomizedSearchCV(
+    SVC(probability=True),
+    {"C": [0.1, 1, 10], "kernel": ["linear", "rbf"]},
+    n_iter=5, cv=cv
+)
+svm_model.fit(X_train, y_train)
+
+
+models = [
+    ("Perceptron", p_model.best_estimator_),
+    ("SVM", svm_model.best_estimator_),
     ("Decision Tree", DecisionTreeClassifier(max_depth=5)),
-    ("Random Forest", RandomForestClassifier(n_estimators=100)),
+    ("Random Forest", rf_model.best_estimator_),
     ("AdaBoost", AdaBoostClassifier(n_estimators=100)),
     ("Gradient Boost", GradientBoostingClassifier(n_estimators=100)),
     ("Naive Bayes", GaussianNB()),
@@ -59,98 +73,67 @@ model_list = [
 ]
 
 
-# -------------------------------
-# 4. Training + Results
-# -------------------------------
 results = []
-trained = {}
+saved = {}
 
-for name, model in model_list:
+for name, model in models:
     model.fit(X_train, y_train)
 
-    train_pred = model.predict(X_train)
-    test_pred = model.predict(X_test)
+    p1 = model.predict(X_train)
+    p2 = model.predict(X_test)
 
-    train_acc = accuracy_score(y_train, train_pred)
-    test_acc = accuracy_score(y_test, test_pred)
+    a1 = accuracy_score(y_train, p1)
+    a2 = accuracy_score(y_test, p2)
 
-    precision = precision_score(y_test, test_pred, average="weighted", zero_division=0)
-    recall = recall_score(y_test, test_pred, average="weighted", zero_division=0)
-    f1 = f1_score(y_test, test_pred, average="weighted", zero_division=0)
+    pr = precision_score(y_test, p2, average="weighted", zero_division=0)
+    rc = recall_score(y_test, p2, average="weighted", zero_division=0)
+    f1 = f1_score(y_test, p2, average="weighted", zero_division=0)
 
-    results.append([
-        name,
-        round(train_acc, 4),
-        round(test_acc, 4),
-        round(precision, 4),
-        round(recall, 4),
-        round(f1, 4)
-    ])
+    results.append([name, round(a1,4), round(a2,4), round(pr,4), round(rc,4), round(f1,4)])
 
-    trained[name] = model
-    print("Completed:", name)
+    saved[name] = model
+    print("Done:", name)
 
 
-# -------------------------------
-# 5. Results Table
-# -------------------------------
-df = pd.DataFrame(results, columns=[
-    "Model", "Train Acc", "Test Acc", "Precision", "Recall", "F1"
-])
-
+df = pd.DataFrame(results, columns=["Model","Train Acc","Test Acc","Precision","Recall","F1"])
 df = df.set_index("Model")
 
-print("\nResults (Train vs Test):\n")
+print("\nResults:\n")
 print(df)
 
 
-# -------------------------------
-# 6. Plot
-# -------------------------------
-df[["Train Acc", "Test Acc"]].plot(kind="bar", figsize=(10,5))
-plt.title("Train vs Test Accuracy")
+df[["Train Acc","Test Acc"]].plot(kind="bar", figsize=(10,5))
+plt.title("Accuracy Comparison")
 plt.xticks(rotation=30)
 plt.tight_layout()
 plt.show()
 
 
-# -------------------------------
-# 7. Best Model
-# -------------------------------
-best_model_name = df["Test Acc"].idxmax()
-best_model = trained[best_model_name]
+best = df["Test Acc"].idxmax()
+m = saved[best]
 
-print("\nBest Model:", best_model_name)
+print("\nBest Model:", best)
 
-y_pred = best_model.predict(X_test)
+pred = m.predict(X_test)
 
-cm = confusion_matrix(y_test, y_pred)
-
-disp = ConfusionMatrixDisplay(cm)
-disp.plot()
-plt.title("Confusion Matrix - " + best_model_name)
+cm = confusion_matrix(y_test, pred)
+d = ConfusionMatrixDisplay(cm)
+d.plot()
+plt.title("Confusion Matrix - " + best)
 plt.show()
 
-print("\nClassification Report:\n")
-print(classification_report(y_test, y_pred))
+print("\nReport:\n")
+print(classification_report(y_test, pred))
 
 
-# -------------------------------
-# 8. Cross Validation
-# -------------------------------
 print("\nCross Validation:\n")
 
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
-for name, model in trained.items():
-    scores = cross_val_score(model, X_train, y_train, cv=cv)
-    print(name, "Mean:", round(scores.mean(),4), "Std:", round(scores.std(),4))
+for name, model in saved.items():
+    sc = cross_val_score(model, X_train, y_train, cv=cv)
+    print(name, "Mean:", round(sc.mean(),4), "Std:", round(sc.std(),4))
 
 
-# -------------------------------
-# 9. Final Ranking
-# -------------------------------
 final = df.sort_values("Test Acc", ascending=False)
 
-print("\nFinal Model Ranking:\n")
+print("\nFinal Ranking:\n")
 print(final)
